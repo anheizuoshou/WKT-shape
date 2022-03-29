@@ -1,0 +1,77 @@
+# -*- coding: utf-8 -*-
+
+'''
+@ DESC: Convert multiple WKT to a GDB file and a shapefile file.
+@ AUTHOR: xingrui94
+@ AUTHOR:2021-04-26
+'''
+
+import csv
+
+import arcpy
+
+def wkt2geometry(filename, save_db, save_feature_name, id_filed_idx = None, wkt_field_idx = None):
+    '''
+    '''
+    # 避免多次运行时，报文件已存在的错误，这里设置为重复时则覆盖源文件
+    arcpy.env.overwriteOutput=True
+    # 将运行的工作空间设置为事先手动建立好的GDB数据库
+    arcpy.env.workspace = save_db
+    features_list = []
+    
+    # 首先使用Python自带的CSV模块读取CSV文件中的原始数据
+    with open(filename, "r") as f:
+        f_iter = csv.reader(f)
+        #
+        fields = next(f_iter)
+        for record in f_iter:
+            # 很关键，获取几何元素的id，也就是每一行，即每条记录的id
+            
+            record_id = record[id_filed_idx]
+            # 这句是核心代码，从WKT字符串创建一个几何对象Geometry
+            geometry = arcpy.FromWKT(record[wkt_field_idx])
+            
+            # 加一个前缀，避免跟上边的记录id重复
+            feature = "_" + record_id
+            # 根据原始数据，为即将生成的矢量图层属性表定义字段
+            arcpy.CopyFeatures_management(geometry, feature)
+            arcpy.AddField_management(feature, "ID_FIELD", "TEXT", 12, "", "", "ID_FIELD", "NULLABLE")
+            arcpy.AddField_management(feature, "DEFAULTTIME", "DATE")
+            arcpy.AddField_management(feature, "DATASOURCE", "TEXT")
+            arcpy.AddField_management(feature, "DATA_ID", "TEXT")
+            arcpy.AddField_management(feature, "VERS", "TEXT")
+
+            # 使用字段计算方式，根据唯一的矢量元素id，计算各个字段的值。
+            try:
+                arcpy.CalculateField_management(feature, "ID_FIELD", '"' + record_id + '"', "PYTHON")
+                arcpy.CalculateField_management(feature, "DEFAULTTIME", '"' + record[1] + '"', "PYTHON")
+                arcpy.CalculateField_management(feature, "DATASOURCE", '"' + record[2] + '"', "PYTHON")
+                arcpy.CalculateField_management(feature, "DATA_ID", '"' + record[2] + '"', "PYTHON")
+                arcpy.CalculateField_management(feature, "VERS", '"' + record[4] + '"', "PYTHON")
+            except Exception, e:
+                print e
+            
+            # 将当前计算完的矢量元素（Feature）保存到列表里，以备后边合并
+            features_list.append(feature)
+            del geometry
+        
+        # 合并列表中的所有矢量元素
+        arcpy.Merge_management(features_list, save_feature_name)
+        # 从内存释放资源
+        for i in features_list:
+            arcpy.Delete_management(i, "")
+        del features_list
+
+def main():
+    # 为了安全，这里用的文件名是一个虚拟的文件名
+    filename = u"G:\\工作\\2022工作\\WKT互转\\123.csv"
+    save_db = r'G:\工作\2022工作\WKT互转\1.gdb'
+    save_feature_name = "all_features"
+    id_filed_idx = 0
+    wkt_field_idx = -1
+    wkt2geometry(filename, save_db, save_feature_name, id_filed_idx = id_filed_idx, wkt_field_idx = wkt_field_idx)
+
+
+if __name__ == "__main__":
+    main()
+
